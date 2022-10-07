@@ -6,3 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = "0.5.16"
+murray = { path = "../botnet/murray" }
+tower-http = { version = "0.3", features = ["fs", "trace"] }
+tracing = "0.1.36"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
