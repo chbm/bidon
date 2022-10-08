@@ -62,7 +62,10 @@ impl BucketActor {
 
         if let Some(store) = state.store.as_mut() { 
             if let Some(v) = msg.value {
-                store.insert(msg.key, v);
+                match store.insert(msg.key, v) {
+                    Some(prev) => { r.val = Some(prev) },
+                    None => { r.val = None }
+                }
             } else {
                 r.err = BucketErrors::Failure;
             }
@@ -76,7 +79,7 @@ impl BucketActor {
 
         if let Some(store) = state.store.as_mut() { 
             match store.remove(&msg.key) {
-                Some(_) => {},
+                Some(prev) => { r.val = Some(prev) },
                 None => { r.err = BucketErrors::NotFound }
             }
         } else { r.err = BucketErrors::Failure; };
@@ -125,13 +128,11 @@ mod tests {
                         value: Some(Value::from(*v)),
                         ch: tx,
                     });
-                    tokio::spawn(async move {
-                        assert_ok!(b.send(m).await);
-                    });
-                    tokio::spawn(async move {
-                        let ret = assert_ok!(rx.await);
-                        assert_eq!(ret.err, BucketErrors::NoError);
-                    });    
+                    assert_ok!(b.send(m).await);
+
+                    let ret = assert_ok!(rx.await);
+                    assert_eq!(ret.err, BucketErrors::NoError);
+                    assert_eq!(ret.val, None);
                 },
                 None => {},
             }
@@ -146,32 +147,43 @@ mod tests {
                 value: None,
                 ch: tx,
             });
-            tokio::spawn(async move {
-                assert_ok!(b.send(m).await);
-            });
-            tokio::spawn(async move {
-                let ret = assert_ok!(rx.await);
-                assert_eq!(ret.err, BucketErrors::NoError); 
-                assert_eq!(ret.val, Some(expected));
-            });
+            assert_ok!(b.send(m).await);
 
+            let ret = assert_ok!(rx.await);
+            assert_eq!(ret.err, BucketErrors::NoError); 
+            assert_eq!(ret.val, Some(expected));
+        }
+        
+        {
+            let (tx, rx) = oneshot::channel::<Return>();
+            let b = bucket.clone();
+            let expected = if let Some(expected) = fixture.get(&"bar") { Value::from(*expected) } else { todo!() };
+            let m = BucketActorMessages::Put(BucketMsgParams{
+                key: "bar".to_string(),
+                value: Some(Value::from("new")),
+                ch: tx,
+            });
+            assert_ok!(b.send(m).await);
+
+            let ret = assert_ok!(rx.await);
+            assert_eq!(ret.err, BucketErrors::NoError);
+            assert_eq!(ret.val, Some(expected));
         }
 
         {
             let (tx, rx) = oneshot::channel::<Return>();
             let b = bucket.clone();
+            let expected = if let Some(expected) = fixture.get(&"foo") { Value::from(*expected) } else { todo!() };
             let m = BucketActorMessages::Delete(BucketMsgParams{
                 key: "foo".to_string(),
                 value: None,
                 ch: tx,
             });
-            tokio::spawn(async move {
-                assert_ok!(b.send(m).await);
-            });
-            tokio::spawn(async move {
-                let ret = assert_ok!(rx.await);
-                assert_eq!(ret.err, BucketErrors::NoError);
-            });    
+            assert_ok!(b.send(m).await);
+
+            let ret = assert_ok!(rx.await);
+            assert_eq!(ret.err, BucketErrors::NoError);
+            assert_eq!(ret.val, Some(expected));
         }
 
         for k in vec!("foo", "not") {
@@ -182,14 +194,10 @@ mod tests {
                 value: None,
                 ch: tx,
             });
-            tokio::spawn(async move {
-                assert_ok!(b.send(m).await);
-            });
-            tokio::spawn(async move {
-                let ret = assert_ok!(rx.await);
-                assert_eq!(ret.err, BucketErrors::NotFound);
-            });    
-            
+            assert_ok!(b.send(m).await);
+           
+            let ret = assert_ok!(rx.await);
+            assert_eq!(ret.err, BucketErrors::NotFound);
         }
     }
 
