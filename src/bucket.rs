@@ -5,11 +5,10 @@ use tokio::sync::{oneshot, mpsc};
 
 type Value =  String;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BucketErrors {
     NoError,
     Failure,
-    Conflict,
     NotFound,
 }
 
@@ -82,7 +81,7 @@ impl BucketActor {
             }
         } else { r.err = BucketErrors::Failure; };
 
-        msg.ch.send(r);
+        msg.ch.send(r).unwrap();
     }
 
     fn init(&self, state: &mut BucketActorState) {
@@ -94,4 +93,107 @@ pub fn start_bucket(name: String) -> mpsc::Sender<BucketActorMessages> {
     let actor = BucketActor{}.start(&name);
 
     actor
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use super::{start_bucket, BucketMsgParams, BucketErrors, Return, BucketActorMessages};
+    use tokio::sync::{oneshot, mpsc};
+    use tokio_test::{
+        assert_err, assert_ok, assert_pending, assert_ready, assert_ready_err, assert_ready_ok,
+    };
+
+    #[tokio::test]
+    async fn test_bucket_crud() {
+        let bucket = start_bucket("default".to_string());
+
+        let fixture = HashMap::from([
+            ("foo", "foo"),
+            ("bar", "bar"),
+            ("xpto", "xpto"),
+            ("long", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        ]);
+
+        for k in fixture.keys() {
+            let (tx, rx) = oneshot::channel::<Return>();
+            let b = bucket.clone();
+            match fixture.get(k) {
+                Some(v) => {
+                    let m = BucketActorMessages::Put(BucketMsgParams{
+                        key: k.to_string(),
+                        value: Some(v.to_string()),
+                        ch: tx,
+                    });
+                    tokio::spawn(async move {
+                        assert_ok!(b.send(m).await);
+                    });
+                    tokio::spawn(async move {
+                        let ret = assert_ok!(rx.await);
+                        assert_eq!(ret.err, BucketErrors::NoError);
+                    });    
+                },
+                None => {},
+            }
+        }
+
+        for k in fixture.keys() {
+            let (tx, rx) = oneshot::channel::<Return>();
+            let b = bucket.clone();
+            let expected = if let Some(expected) = fixture.get(k) { expected.to_string() } else { todo!() };
+            let m = BucketActorMessages::Get(BucketMsgParams{
+                key: k.to_string(),
+                value: None,
+                ch: tx,
+            });
+            tokio::spawn(async move {
+                assert_ok!(b.send(m).await);
+            });
+            tokio::spawn(async move {
+                let ret = assert_ok!(rx.await);
+                assert_eq!(ret.err, BucketErrors::NoError); 
+                assert_eq!(ret.val, Some(expected));
+            });
+
+        }
+
+        {
+            let (tx, rx) = oneshot::channel::<Return>();
+            let b = bucket.clone();
+            let m = BucketActorMessages::Delete(BucketMsgParams{
+                key: "foo".to_string(),
+                value: None,
+                ch: tx,
+            });
+            tokio::spawn(async move {
+                assert_ok!(b.send(m).await);
+            });
+            tokio::spawn(async move {
+                let ret = assert_ok!(rx.await);
+                assert_eq!(ret.err, BucketErrors::NoError);
+            });    
+        }
+
+        for k in vec!("foo", "not") {
+            let (tx, rx) = oneshot::channel::<Return>();
+            let b = bucket.clone();
+            let m = BucketActorMessages::Get(BucketMsgParams{
+                key: k.to_string(),
+                value: None,
+                ch: tx,
+            });
+            tokio::spawn(async move {
+                assert_ok!(b.send(m).await);
+            });
+            tokio::spawn(async move {
+                let ret = assert_ok!(rx.await);
+                assert_eq!(ret.err, BucketErrors::NotFound);
+            });    
+            
+        }
+    }
+
+
+
+
 }

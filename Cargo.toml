@@ -12,3 +12,6 @@ murray = { path = "../botnet/murray" }
 tower-http = { version = "0.3", features = ["fs", "trace"] }
 tracing = "0.1.36"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tokio-test = "0.4.2"
