@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{sync::Arc};
 use axum::{
     Router,
     extract::{Path},
+    body::Bytes,
     Extension,
     routing::{get,put,delete}, http::StatusCode,
 };
@@ -14,8 +15,8 @@ use crate::bucket::Return as Return;
 use crate::bucket::BucketErrors as Errors;
 
 
-async fn get_handler(Path(key): Path<String>, ext: Extension<Arc<Channel>>) -> Result<String, StatusCode> {
-    let bucket = ext.0;
+async fn get_handler(Path(key): Path<String>, ext: Extension<Arc<Channel>>) -> Result<Bytes, StatusCode> {
+    let bucket = ext.0.clone();
 
     let (tx, rx) = oneshot::channel::<Return>();
     let msg = Messages::Get(MsgParams{
@@ -32,12 +33,12 @@ async fn get_handler(Path(key): Path<String>, ext: Extension<Arc<Channel>>) -> R
                     return Err(StatusCode::NOT_FOUND);
                 },
                 Errors::NoError => {
-                    return Ok(r.val.unwrap());
+                    return Ok(Bytes::from(r.val.unwrap()));
                 }
                 _ => {}
             }
         },
-        Err(e) => {
+        Err(_e) => {
             // XXX
         }
     }
@@ -45,14 +46,61 @@ async fn get_handler(Path(key): Path<String>, ext: Extension<Arc<Channel>>) -> R
     Err(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-async fn put_handler(body: String, ext: Extension<Arc<Channel>>) -> Result<String, StatusCode> {
-    let bucket = ext.0;
+async fn put_handler(Path(key): Path<String>, ext: Extension<Arc<Channel>>, body: Bytes) -> Result<Bytes, StatusCode> {
+    let bucket = ext.0.clone();
+    let (tx, rx) = oneshot::channel::<Return>();
+    let msg = Messages::Put(MsgParams{
+        key: String::from(key),
+        value: Some(body.to_vec()),
+        ch: tx,
+    });
+    bucket.send(msg).await.unwrap(); // XXX
+
+    match rx.await {
+        Ok(r) => {
+            match r.err {
+                Errors::NotFound => {
+                    return Err(StatusCode::NOT_FOUND);
+                },
+                Errors::NoError => {
+                    let prev = if let Some(prev) = r.val { Bytes::from(prev) } else { Bytes::new() };
+                    return Ok(prev);
+                }
+                _ => {}
+            }
+        },
+        Err(_e) => {
+            // XXX
+        }
+    }
 
     Err(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-async fn delete_handler(ext: Extension<Arc<Channel>>) -> Result<String, StatusCode> {
-    let bucket = ext.0;
+async fn delete_handler(Path(key): Path<String>, ext: Extension<Arc<Channel>>) -> Result<Bytes, StatusCode> {
+    let bucket = ext.0.clone();
+    let (tx, rx) = oneshot::channel::<Return>();
+    let msg = Messages::Delete(MsgParams{
+        key: String::from(key),
+        value: None,
+        ch: tx,
+    });
+    bucket.send(msg).await.unwrap(); // XXX
+
+    match rx.await {
+        Ok(r) => {
+            match r.err {
+                Errors::NoError => {
+                    let prev = if let Some(prev) = r.val { Bytes::from(prev) } else { Bytes::new() };
+                    return Ok(prev);
+                }
+                _ => {}
+            }
+        },
+        Err(_e) => {
+            // XXX
+        }
+    }
 
     Err(StatusCode::INTERNAL_SERVER_ERROR)
 }
@@ -63,5 +111,5 @@ pub fn mount_bucket_routes(r: Router, bucket: Channel) -> Router {
        .route("/:key", get(get_handler))
        .route("/:key", put(put_handler))
        .route("/:key", delete(delete_handler))
-       .layer(Extension(bucket))
+       .layer(Extension(Arc::new(bucket)))
 }
