@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use murray::actor;
 use tokio::sync::{oneshot, mpsc};
 
-type Value =  String;
+type Value =  Vec<u8>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BucketErrors {
@@ -98,7 +98,7 @@ pub fn start_bucket(name: String) -> mpsc::Sender<BucketActorMessages> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use super::{start_bucket, BucketMsgParams, BucketErrors, Return, BucketActorMessages};
+    use super::{start_bucket, BucketMsgParams, BucketErrors, Return, BucketActorMessages, Value};
     use tokio::sync::{oneshot, mpsc};
     use tokio_test::{
         assert_err, assert_ok, assert_pending, assert_ready, assert_ready_err, assert_ready_ok,
@@ -122,7 +122,7 @@ mod tests {
                 Some(v) => {
                     let m = BucketActorMessages::Put(BucketMsgParams{
                         key: k.to_string(),
-                        value: Some(v.to_string()),
+                        value: Some(Value::from(*v)),
                         ch: tx,
                     });
                     tokio::spawn(async move {
@@ -140,7 +140,7 @@ mod tests {
         for k in fixture.keys() {
             let (tx, rx) = oneshot::channel::<Return>();
             let b = bucket.clone();
-            let expected = if let Some(expected) = fixture.get(k) { expected.to_string() } else { todo!() };
+            let expected = if let Some(expected) = fixture.get(k) { Value::from(*expected) } else { todo!() };
             let m = BucketActorMessages::Get(BucketMsgParams{
                 key: k.to_string(),
                 value: None,
