@@ -101,6 +101,8 @@ name = "bidon"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "hyper",
+ "hyper-mock-client",
  "murray",
  "tokio",
  "tokio-test",
@@ -254,6 +256,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-mock-client"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "hyper",
+ "tokio",
+ "tokio-test",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -341,7 +353,7 @@ dependencies = [
 
 [[package]]
 name = "murray"
-version = "0.4.0"
+version = "0.4.2"
 dependencies = [
  "quote",
 ]

@@ -3,13 +3,14 @@ use std::collections::HashMap;
 use murray::actor;
 use tokio::sync::{oneshot, mpsc};
 
-type Value =  Vec<u8>;
+pub type Value =  Vec<u8>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BucketErrors {
     NoError,
     Failure,
     NotFound,
+    Conflict,
 }
 
 #[derive(Clone, Debug)]

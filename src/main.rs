@@ -9,6 +9,7 @@ use tokio::{self, sync::mpsc};
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod supervisor;
 mod bucket;
 mod http_app;
 
@@ -32,8 +33,8 @@ fn add_observability_to(r: Router) -> Router {
 async fn main() {
     let router = add_observability_to(Router::new());
 
-    let default = bucket::start_bucket("default".to_string());
-    let app = http_app::mount_bucket_routes(router, default);
+    let bidon = supervisor::start_bidon().await;
+    let app = http_app::mount_bidon_routes(router, bidon);
 
     // run it with hyper
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
